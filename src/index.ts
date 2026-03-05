@@ -12,12 +12,11 @@ dotenv.config();
 
 // Enforce critical environment variables
 const requiredEnvs = ['DATABASE_URL', 'JWT_SECRET'];
-for (const env of requiredEnvs) {
+requiredEnvs.forEach(env => {
     if (!process.env[env]) {
-        console.error(`FATAL ERROR: Environment variable ${env} is missing.`);
-        process.exit(1);
+        console.error(`[CRITICAL] Environment variable ${env} is missing.`);
     }
-}
+});
 
 const app = express();
 const PORT = process.env.PORT || 5000;

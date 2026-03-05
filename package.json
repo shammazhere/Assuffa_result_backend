@@ -7,7 +7,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "seed": "ts-node prisma/seed.ts",
-    "postinstall": "node node_modules/prisma/build/index.js generate"
+    "postinstall": "prisma generate"
   },
   "keywords": [],
   "author": "",
