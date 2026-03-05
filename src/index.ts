@@ -62,12 +62,12 @@ app.use(limiter);
 app.use(["/api/auth", "/auth"], authRoutes);
 app.use(["/api/admin", "/admin"], adminRoutes);
 
-app.get("/", (req, res) => {
+app.get(["/", "/api"], (req, res) => {
     res.status(200).json({
         name: "As-Swuffah Results Management API",
         version: "1.0.0",
         status: "operational",
-        documentation: "https://github.com/shammazhere/globe_trotter",
+        documentation: "https://assuffa-result-frntend-rvkq.vercel.app",
         timestamp: new Date().toISOString()
     });
 });
