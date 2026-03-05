@@ -31,22 +31,26 @@ const allowedOrigins = [
 
 app.use(cors({
     origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or local scripts)
+        // Allow requests with no origin (like mobile apps)
         if (!origin) return callback(null, true);
 
-        // Ensure allowedOrigins correctly handles potential trailing slashes or case mismatches
-        const normalizedOrigin = origin.toLowerCase().trim();
-        const isAllowed = allowedOrigins.some(ao => ao?.toLowerCase().trim().replace(/\/$/, '') === normalizedOrigin.replace(/\/$/, ''));
+        const isVercel = origin.endsWith('.vercel.app');
+        const isLocal = origin.includes('localhost') || origin.includes('127.0.0.1');
 
-        if (isAllowed || process.env.NODE_ENV !== 'production') {
+        if (isVercel || isLocal || process.env.NODE_ENV !== 'production') {
             return callback(null, true);
         } else {
-            console.error(`[CORS REJECTED] Origin: ${origin}. Allowed: ${allowedOrigins.join(', ')}`);
+            console.warn(`[CORS REJECTED] Origin: ${origin}`);
             return callback(new Error('Not allowed by CORS'), false);
         }
     },
-    credentials: true
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
 }));
+
+// Explicitly handle pre-flight requests
+app.options('*', cors() as any);
 
 app.use(express.json());
 app.use(cookieParser());
