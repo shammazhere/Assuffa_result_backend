@@ -3,6 +3,10 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
+    if (process.env.NODE_ENV === 'production' && process.env.CONFIRM_DELETE !== 'true') {
+        console.error("❌ CRITICAL: Attempted to run clear-db in production without CONFIRM_DELETE=true.");
+        process.exit(1);
+    }
     console.log("🧹 Clearing database...");
 
     // Delete records in order of dependencies
