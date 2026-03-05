@@ -21,23 +21,12 @@ requiredEnvs.forEach(env => {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Universal CORS at the very top
-app.use(cors({
-    origin: (origin, callback) => {
-        // Just say yes - we've already secured it in vercel.json
-        callback(null, true);
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
+// Since we use vercel.json for CORS, we don't need the middleware here.
+// This prevents header duplication that causes 500 errors.
+app.use(helmet({
+    crossOriginResourcePolicy: false,
+    contentSecurityPolicy: false
 }));
-
-// OPTIONS preflight shortcut
-app.options('*', (req, res) => {
-    res.status(200).send('OK');
-});
-
-app.use(helmet({ crossOriginResourcePolicy: false }));
 
 app.use(express.json());
 app.use(cookieParser());
@@ -49,26 +38,20 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Mount routes with path-agnostic prefixes (handles both /api/* and /*)
-app.use(["/api/auth", "/auth"], authRoutes);
-app.use(["/api/admin", "/admin"], adminRoutes);
+// Mount routes
+app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminRoutes);
 
-app.get(["/", "/api"], (req, res) => {
+app.get(["/", "/api", "/health"], (req, res) => {
     res.status(200).json({
         name: "As-Swuffah Results Management API",
         version: "1.0.0",
         status: "operational",
-        documentation: "https://assuffa-result-frntend-rvkq.vercel.app",
-        timestamp: new Date().toISOString()
+        environment: process.env.NODE_ENV || "production"
     });
 });
 
-// Health check endpoint for deployment validation
-app.get("/health", (req, res) => {
-    res.status(200).json({ status: "ok", environment: process.env.NODE_ENV || "development" });
-});
-
-// JSON based 404 for API routes
+// JSON based 404
 app.use((req, res) => {
     res.status(404).json({ message: "API route not found" });
 });
@@ -76,24 +59,13 @@ app.use((req, res) => {
 // Global error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     const status = err.status || 500;
-    const isProduction = process.env.NODE_ENV === 'production';
-
-    // Detailed logging for internal server errors
-    if (status >= 500) {
-        console.error(`[FATAL ERROR] ${req.method} ${req.url}:`, err);
-    } else {
-        console.warn(`[WARN] ${req.method} ${req.url}: ${err.message || 'Client error'}`);
-    }
-
+    console.error(`[ERROR] ${req.method} ${req.url}:`, err);
     res.status(status).json({
-        message: isProduction
-            ? (status >= 500 ? "An unexpected system error occurred. Please try again later." : err.message)
-            : err.message || "Internal Server Error",
-        ...(isProduction ? {} : { stack: err.stack })
+        message: "An error occurred. Check backend logs for details.",
+        error: process.env.NODE_ENV === 'production' ? {} : err.message
     });
 });
 
-// Only start the server if we're not in a serverless environment (like Vercel)
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
     app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}`);
