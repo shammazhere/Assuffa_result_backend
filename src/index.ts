@@ -31,11 +31,17 @@ const allowedOrigins = [
 
 app.use(cors({
     origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl requests)
+        // Allow requests with no origin (like mobile apps or local scripts)
         if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+
+        // Ensure allowedOrigins correctly handles potential trailing slashes or case mismatches
+        const normalizedOrigin = origin.toLowerCase().trim();
+        const isAllowed = allowedOrigins.some(ao => ao?.toLowerCase().trim().replace(/\/$/, '') === normalizedOrigin.replace(/\/$/, ''));
+
+        if (isAllowed || process.env.NODE_ENV !== 'production') {
             return callback(null, true);
         } else {
+            console.error(`[CORS REJECTED] Origin: ${origin}. Allowed: ${allowedOrigins.join(', ')}`);
             return callback(new Error('Not allowed by CORS'), false);
         }
     },
@@ -52,8 +58,9 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-app.use("/api/auth", authRoutes);
-app.use("/api/admin", adminRoutes);
+// Mount routes with path-agnostic prefixes (handles both /api/* and /*)
+app.use(["/api/auth", "/auth"], authRoutes);
+app.use(["/api/admin", "/admin"], adminRoutes);
 
 app.get("/", (req, res) => {
     res.status(200).json({
