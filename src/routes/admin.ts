@@ -10,7 +10,8 @@ router.use(adminAuth);
 
 // --- CLASSES ---
 const classSchema = z.object({
-    name: z.string().min(1)
+    name: z.string().min(1),
+    type: z.enum(["Offline", "Online"]).default("Offline")
 });
 
 router.get("/classes", async (req, res) => {
@@ -20,8 +21,8 @@ router.get("/classes", async (req, res) => {
 
 router.post("/classes", async (req, res) => {
     try {
-        const { name } = classSchema.parse(req.body);
-        const newClass = await prisma.class.create({ data: { name } });
+        const { name, type } = classSchema.parse(req.body);
+        const newClass = await prisma.class.create({ data: { name, type } });
         res.status(201).json(newClass);
     } catch (error) {
         res.status(400).json({ error: "Invalid data or class already exists" });
@@ -85,11 +86,22 @@ router.get("/students", async (req, res) => {
 
     const students = await prisma.student.findMany({
         where,
-        include: { class: true },
+        select: {
+            id: true,
+            first_name: true,
+            usn: true,
+            class_id: true,
+            class: {
+                select: {
+                    id: true,
+                    name: true,
+                    type: true
+                }
+            }
+        },
         orderBy: { usn: 'asc' }
     });
-    const safe = students.map(({ dob_hash, ...rest }: any) => rest);
-    res.json(safe);
+    res.json(students);
 });
 
 router.post("/students", async (req, res) => {

@@ -44,6 +44,11 @@ router.post("/student/login", async (req, res) => {
             first_name: student.first_name,
             usn: student.usn,
             className: student.class.name,
+            classType: student.class.type,
+            class: {
+                name: student.class.name,
+                type: student.class.type
+            },
             marks: student.marks.map(m => ({
                 subject: m.subject.name,
                 total: m.total,
