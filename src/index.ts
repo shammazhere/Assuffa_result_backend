@@ -17,6 +17,15 @@ app.use(helmet({
     contentSecurityPolicy: false,
 }));
 
+// Handle CORS preflight for all routes
+app.options('*', (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.sendStatus(200);
+});
+
 app.use(express.json());
 app.use(cookieParser());
 
