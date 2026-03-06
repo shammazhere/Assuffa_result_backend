@@ -29,9 +29,12 @@ app.options('*', (_req, res) => {
 app.use(express.json());
 app.use(cookieParser());
 
+// Trust Vercel's proxy so rate limiting works per user IP, not Vercel's IP
+app.set("trust proxy", 1);
+
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 100,
+    max: 500, // Increased to 500 for high burst traffic during results day
     message: { message: "Too many requests from this IP, please try again later." }
 });
 app.use(limiter);
