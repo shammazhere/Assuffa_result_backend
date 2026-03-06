@@ -1,16 +1,10 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { z, ZodError } from "zod";
+import { z } from "zod";
 import { prisma } from "../lib/prisma";
 
 const router = express.Router();
-
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-    console.error("CRITICAL ERROR: JWT_SECRET environment variable is not set.");
-    process.exit(1);
-}
 
 const studentLoginSchema = z.object({
     usn: z.string().min(1, "USN is required"),
@@ -57,18 +51,24 @@ router.post("/student/login", async (req, res) => {
             }))
         };
 
-        res.status(200).json(studentData);
+        return res.status(200).json(studentData);
     } catch (error) {
         if (error instanceof z.ZodError) {
             return res.status(400).json({ message: "Validation error", errors: error.issues });
         }
-        console.error(error);
-        res.status(500).json({ message: "Internal Server Error" });
+        console.error("[student/login error]", error);
+        return res.status(500).json({ message: "Internal Server Error" });
     }
 });
 
 router.post("/admin/login", async (req, res) => {
     try {
+        const JWT_SECRET = process.env.JWT_SECRET;
+        if (!JWT_SECRET) {
+            console.error("JWT_SECRET is not set");
+            return res.status(500).json({ message: "Server configuration error" });
+        }
+
         const { username, password } = adminLoginSchema.parse(req.body);
 
         const admin = await prisma.admin.findUnique({ where: { username } });
@@ -81,28 +81,33 @@ router.post("/admin/login", async (req, res) => {
             return res.status(401).json({ message: "Invalid credentials" });
         }
 
-        const token = jwt.sign({ id: admin.id, username: admin.username }, JWT_SECRET, { expiresIn: "1d" });
+        const token = jwt.sign(
+            { id: admin.id, username: admin.username },
+            JWT_SECRET,
+            { expiresIn: "1d" }
+        );
 
+        // Set cookie + return token in body (token-in-body works across origins)
         res.cookie("token", token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
+            secure: true,
             maxAge: 24 * 60 * 60 * 1000,
-            sameSite: "strict"
+            sameSite: "none"   // MUST be "none" for cross-origin (Vercel frontend ↔ backend)
         });
 
-        res.status(200).json({ message: "Login successful", token });
+        return res.status(200).json({ message: "Login successful", token });
     } catch (error) {
         if (error instanceof z.ZodError) {
             return res.status(400).json({ message: "Validation error", errors: error.issues });
         }
-        console.error(error);
-        res.status(500).json({ message: "Internal Server Error" });
+        console.error("[admin/login error]", error);
+        return res.status(500).json({ message: "Internal Server Error" });
     }
 });
 
-router.post("/admin/logout", (req, res) => {
-    res.clearCookie("token");
-    res.status(200).json({ message: "Logged out successfully" });
+router.post("/admin/logout", (_req, res) => {
+    res.clearCookie("token", { sameSite: "none", secure: true });
+    return res.status(200).json({ message: "Logged out successfully" });
 });
 
 export default router;
