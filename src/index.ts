@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth";
 import adminRoutes from "./routes/admin";
+import { prisma } from "./lib/prisma";
 
 dotenv.config();
 
@@ -26,7 +27,7 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Mount routes – handles both /api/auth/* and /auth/* since vercel strips the /api prefix after routing
+// Mount routes
 app.use(["/api/auth", "/auth"], authRoutes);
 app.use(["/api/admin", "/admin"], adminRoutes);
 
@@ -35,8 +36,29 @@ app.get(["/", "/api", "/health"], (_req, res) => {
         name: "As-Swuffah Results Management API",
         version: "1.0.0",
         status: "operational",
-        environment: process.env.NODE_ENV || "production"
+        environment: process.env.NODE_ENV || "production",
+        hasDB: !!process.env.DATABASE_URL,
+        hasJWT: !!process.env.JWT_SECRET,
+        hasDirect: !!process.env.DIRECT_URL,
     });
+});
+
+// Diagnostic endpoint — shows env var presence and DB connectivity
+app.get("/api/debug", async (_req, res) => {
+    const checks: Record<string, any> = {
+        DATABASE_URL: !!process.env.DATABASE_URL,
+        DIRECT_URL: !!process.env.DIRECT_URL,
+        JWT_SECRET: !!process.env.JWT_SECRET,
+        NODE_ENV: process.env.NODE_ENV,
+    };
+    try {
+        await prisma.$queryRaw`SELECT 1`;
+        checks.db_connected = true;
+    } catch (e: any) {
+        checks.db_connected = false;
+        checks.db_error = e.message;
+    }
+    res.json(checks);
 });
 
 // 404 fallback
