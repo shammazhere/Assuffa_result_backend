@@ -146,6 +146,61 @@ router.delete("/students/:id", async (req, res) => {
     }
 });
 
+// --- BULK STUDENTS ---
+const bulkStudentSchema = z.array(z.object({
+    first_name: z.string().min(1),
+    usn: z.string().min(1),
+    dob: z.string().min(1),
+    class_id: z.string().min(1)
+}));
+
+router.post("/students/bulk", async (req, res) => {
+    try {
+        const students = bulkStudentSchema.parse(req.body);
+
+        // Validation: Unique USNs in the incoming batch
+        const incomingUsns = students.map(s => s.usn.trim().toUpperCase());
+        if (new Set(incomingUsns).size !== incomingUsns.size) {
+            return res.status(400).json({ error: "Duplicate USNs found in the uploaded file." });
+        }
+
+        // Check if any USN already exists in DB
+        const existingInDb = await prisma.student.findMany({
+            where: { usn: { in: incomingUsns } },
+            select: { usn: true }
+        });
+
+        if (existingInDb.length > 0) {
+            return res.status(400).json({
+                error: `Found ${existingInDb.length} students already registered in the system.`,
+                details: existingInDb.map(s => s.usn)
+            });
+        }
+
+        // Hash DOBS outside transaction for performance and consistency
+        const hashedStudents = await Promise.all(students.map(async (s) => {
+            const dob_hash = await bcrypt.hash(s.dob.trim(), 10);
+            return {
+                first_name: s.first_name.trim(),
+                usn: s.usn.trim().toUpperCase(),
+                dob_hash,
+                class_id: s.class_id
+            };
+        }));
+
+        // Execute as a single transaction
+        const createdCount = await prisma.student.createMany({
+            data: hashedStudents,
+            skipDuplicates: false,
+        });
+
+        res.status(201).json({ success: true, count: createdCount.count });
+    } catch (error) {
+        console.error("Bulk upload error:", error);
+        res.status(400).json({ error: "Invalid data format or server error during bulk upload." });
+    }
+});
+
 // --- MARKS ---
 const markSchema = z.object({
     student_id: z.string().min(1),
