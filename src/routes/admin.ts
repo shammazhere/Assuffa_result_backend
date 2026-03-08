@@ -293,4 +293,107 @@ router.post("/marks/bulk", async (req, res) => {
     }
 });
 
+// --- COMPREHENSIVE BULK IMPORT ---
+router.post("/bulk-complete", async (req, res) => {
+    try {
+        const payload = req.body; // Array of student data with marks
+        let successCount = 0;
+
+        // 1. Pre-process and Hash DOBs in parallel (Faster & prevents transaction timeout)
+        const studentsToProcess = await Promise.all(payload.map(async (item: any) => {
+            const { dob } = item;
+            let finalDob = String(dob).trim();
+            if (finalDob.includes('/')) {
+                const [d, m, y] = finalDob.split('/');
+                finalDob = `${y}-${m}-${d}`;
+            }
+            const dob_hash = await bcrypt.hash(finalDob, 10);
+            return { ...item, dob_hash };
+        }));
+
+        await prisma.$transaction(async (tx) => {
+            for (const studentData of studentsToProcess) {
+                const { first_name, usn, dob_hash, class_name, marks } = studentData;
+                const class_type = studentData.class_type || studentData.type || studentData.mode || "Offline";
+
+                // 1. Find or create class (Standardize Name to UpperCase)
+                const standardizedClassName = String(class_name).trim().toUpperCase();
+                let targetClass = await tx.class.findFirst({
+                    where: { name: standardizedClassName }
+                });
+
+                if (!targetClass) {
+                    targetClass = await tx.class.create({
+                        data: {
+                            name: standardizedClassName,
+                            type: class_type.charAt(0).toUpperCase() + class_type.slice(1).toLowerCase()
+                        }
+                    });
+                }
+
+                // 3. Upsert Student (Standardize Name to UpperCase)
+                const student = await tx.student.upsert({
+                    where: { usn: String(usn).trim().toUpperCase() },
+                    update: {
+                        first_name: String(first_name).trim().toUpperCase(),
+                        dob_hash,
+                        class_id: targetClass.id
+                    },
+                    create: {
+                        first_name: String(first_name).trim().toUpperCase(),
+                        usn: String(usn).trim().toUpperCase(),
+                        dob_hash,
+                        class_id: targetClass.id
+                    }
+                });
+
+                // 4. Process Marks
+                if (marks && Array.isArray(marks)) {
+                    for (const markInfo of marks) {
+                        const subName = String(markInfo.subject_name).trim().toUpperCase();
+
+                        // Find or create subject for THIS class
+                        let subject = await tx.subject.findFirst({
+                            where: { name: subName, class_id: targetClass.id }
+                        });
+
+                        if (!subject) {
+                            subject = await tx.subject.create({
+                                data: { name: subName, class_id: targetClass.id }
+                            });
+                        }
+
+                        const total = parseInt(markInfo.total);
+                        if (!isNaN(total)) {
+                            const grade = calculateGrade(total);
+
+                            await tx.mark.upsert({
+                                where: {
+                                    student_id_subject_id: {
+                                        student_id: student.id,
+                                        subject_id: subject.id
+                                    }
+                                },
+                                update: { total, grade },
+                                create: {
+                                    student_id: student.id,
+                                    subject_id: subject.id,
+                                    total,
+                                    grade
+                                }
+                            });
+                        }
+                    }
+                }
+                successCount++;
+            }
+        });
+
+        res.json({ success: true, count: studentsToProcess.length });
+    } catch (error: any) {
+        console.error("CRITICAL SYNC ERROR:", error);
+        res.status(400).json({ error: error.message || "Comprehensive bulk upload failed. Verify data format." });
+    }
+});
+
 export default router;
