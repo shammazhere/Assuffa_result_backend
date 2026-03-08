@@ -4,10 +4,11 @@
   "main": "api/index.ts",
   "scripts": {
     "dev": "nodemon src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
     "seed": "ts-node prisma/seed.ts",
     "postinstall": "prisma generate"
+  },
+  "engines": {
+    "node": "20.x"
   },
   "keywords": [],
   "author": "",
