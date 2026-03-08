@@ -391,7 +391,8 @@ router.post("/bulk-complete", async (req, res) => {
 
         res.json({ success: true, count: studentsToProcess.length });
     } catch (error: any) {
-        console.error("CRITICAL SYNC ERROR:", error);
+        // Detailed logging for Vercel deployment logs
+        console.error("CRITICAL SYNC ERROR:", error.message || error);
         res.status(400).json({ error: error.message || "Comprehensive bulk upload failed. Verify data format." });
     }
 });
