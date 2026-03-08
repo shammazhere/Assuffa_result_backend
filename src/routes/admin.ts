@@ -160,7 +160,7 @@ router.post("/students/bulk", async (req, res) => {
 
         // Validation: Unique USNs in the incoming batch
         const incomingUsns = students.map(s => s.usn.trim().toUpperCase());
-        if (new Set(incomingUsns).size !== incomingUsns.size) {
+        if (new Set(incomingUsns).size !== incomingUsns.length) {
             return res.status(400).json({ error: "Duplicate USNs found in the uploaded file." });
         }
 
