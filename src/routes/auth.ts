@@ -73,7 +73,7 @@ router.post("/student/login", async (req, res) => {
         });
 
         if (!student) {
-            return res.status(401).json({ message: "Invalid USN or DOB" });
+            return res.status(401).json({ message: `REGISTER NUMBER NOT FOUND: ${usn.trim().toUpperCase()}` });
         }
 
         // Try every possible historic DOB format until one matches the stored hash
@@ -85,7 +85,10 @@ router.post("/student/login", async (req, res) => {
         }
 
         if (!isMatch) {
-            return res.status(401).json({ message: "Invalid USN or DOB" });
+            return res.status(401).json({ 
+                message: "INCORRECT DATE OF BIRTH. The stored data does not match the entered date.",
+                triedFormats: candidates.length // helps confirm if candidates are being generated correctly
+            });
         }
 
         const studentData = {

@@ -315,24 +315,30 @@ router.post("/bulk-complete", async (req, res) => {
         // 1. Pre-process and Hash DOBs in parallel (Faster & prevents transaction timeout)
         const studentsToProcess = await Promise.all(payload.map(async (item: any) => {
             const { dob } = item;
-            let finalDob = String(dob).trim();
+            let finalDob = String(dob).trim().replace(/\s/g, '');
 
-            // Normalize: handle slash-separated date formats including Excel output
+            // Normalize: handle slash-separated or dash-separated date formats
             // Converts d/m/yyyy or dd/mm/yyyy into the canonical DD/MM/YYYY string for hashing
             if (finalDob.includes('/')) {
                 const parts = finalDob.split('/');
                 if (parts.length === 3) {
                     const [d, m, y] = parts;
-                    // Pad day and month to 2 digits (1/1/2000 → 01/01/2000)
                     finalDob = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
                 }
-            }
-            // If date came as YYYY-MM-DD (e.g. from cellDates parsing), convert to DD/MM/YYYY
-            else if (finalDob.includes('-') && finalDob.length >= 8) {
+            } else if (finalDob.includes('-')) {
                 const parts = finalDob.split('-');
-                if (parts.length === 3 && parts[0].length === 4) {
-                    const [y, m, d] = parts;
-                    finalDob = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+                if (parts.length === 3) {
+                    const [p1, p2, p3] = parts;
+                    // YYYY-MM-DD
+                    if (p1.length === 4) {
+                        const [y, m, d] = parts;
+                        finalDob = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+                    } 
+                    // DD-MM-YYYY
+                    else if (p3.length === 4) {
+                        const [d, m, y] = parts;
+                        finalDob = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+                    }
                 }
             }
 
