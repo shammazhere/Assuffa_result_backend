@@ -6,28 +6,46 @@ import { prisma } from "../lib/prisma";
 
 const router = express.Router();
 
-// Normalize DOB to canonical DD/MM/YYYY format before hashing or comparing
-// Handles: 1/1/2006 → 01/01/2006, 2006-01-01 → 01/01/2006, 01/01/2006 unchanged
-const normalizeDob = (raw: string): string => {
-    let dob = raw.trim();
-    if (dob.includes('/')) {
-        const parts = dob.split('/');
+// Generates ALL possible DOB strings that may have been hashed across different upload code versions.
+// This is needed because past uploads stored dates in different formats due to code bugs.
+// Tries every possible format so login always works regardless of when the student was uploaded.
+const generateDobCandidates = (raw: string): string[] => {
+    const cleaned = raw.trim();
+    const candidates = new Set<string>();
+    candidates.add(cleaned); // always try as-is first
+
+    if (cleaned.includes('/')) {
+        const parts = cleaned.split('/');
         if (parts.length === 3) {
-            const [d, m, y] = parts;
-            if (y.length === 4) {
-                // d/m/yyyy or dd/mm/yyyy → pad to DD/MM/YYYY
-                return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+            const [a, b, c] = parts;
+            // Case 1: Input is DD/MM/YYYY (user typed 01/01/2006)
+            // The year will be 4 digits and last
+            if (c.length === 4) {
+                const d = a, m = b, y = c;
+                candidates.add(`${d.padStart(2,'0')}/${m.padStart(2,'0')}/${y}`);  // current format: 01/01/2006
+                candidates.add(`${parseInt(d)}/${parseInt(m)}/${y}`);               // unpadded: 1/1/2006
+                candidates.add(`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`);  // YYYY-MM-DD padded
+                candidates.add(`${y}-${parseInt(m)}-${parseInt(d)}`);              // YYYY-M-D (v1 bug format)
+                candidates.add(`${y}-${m}-${d}`);                                  // YYYY-MM-DD raw parts
             }
         }
-    } else if (dob.includes('-')) {
-        const parts = dob.split('-');
-        if (parts.length === 3 && parts[0].length === 4) {
-            // yyyy-mm-dd → DD/MM/YYYY
-            const [y, m, d] = parts;
-            return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    } else if (cleaned.includes('-')) {
+        const parts = cleaned.split('-');
+        if (parts.length === 3) {
+            const [a, b, c] = parts;
+            if (a.length === 4) {
+                // Input is YYYY-MM-DD or YYYY-M-D
+                const y = a, m = b, d = c;
+                candidates.add(`${d.padStart(2,'0')}/${m.padStart(2,'0')}/${y}`);  // DD/MM/YYYY
+                candidates.add(`${parseInt(d)}/${parseInt(m)}/${y}`);               // D/M/YYYY
+                candidates.add(`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`);  // YYYY-MM-DD padded
+                candidates.add(`${y}-${parseInt(m)}-${parseInt(d)}`);              // YYYY-M-D
+                candidates.add(`${y}-${m}-${d}`);                                  // as-is with dashes
+            }
         }
     }
-    return dob;
+
+    return Array.from(candidates);
 };
 
 const studentLoginSchema = z.object({
@@ -44,9 +62,6 @@ router.post("/student/login", async (req, res) => {
     try {
         const { usn, dob } = studentLoginSchema.parse(req.body);
 
-        // Normalize DOB before comparing so all formats match the stored hash
-        const normalizedDob = normalizeDob(dob);
-
         const student = await prisma.student.findUnique({
             where: { usn: usn.trim().toUpperCase() },
             include: {
@@ -61,7 +76,14 @@ router.post("/student/login", async (req, res) => {
             return res.status(401).json({ message: "Invalid USN or DOB" });
         }
 
-        const isMatch = await bcrypt.compare(normalizedDob, student.dob_hash);
+        // Try every possible historic DOB format until one matches the stored hash
+        const candidates = generateDobCandidates(dob);
+        let isMatch = false;
+        for (const candidate of candidates) {
+            const matched = await bcrypt.compare(candidate, student.dob_hash);
+            if (matched) { isMatch = true; break; }
+        }
+
         if (!isMatch) {
             return res.status(401).json({ message: "Invalid USN or DOB" });
         }
