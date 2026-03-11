@@ -6,6 +6,30 @@ import { prisma } from "../lib/prisma";
 
 const router = express.Router();
 
+// Normalize DOB to canonical DD/MM/YYYY format before hashing or comparing
+// Handles: 1/1/2006 → 01/01/2006, 2006-01-01 → 01/01/2006, 01/01/2006 unchanged
+const normalizeDob = (raw: string): string => {
+    let dob = raw.trim();
+    if (dob.includes('/')) {
+        const parts = dob.split('/');
+        if (parts.length === 3) {
+            const [d, m, y] = parts;
+            if (y.length === 4) {
+                // d/m/yyyy or dd/mm/yyyy → pad to DD/MM/YYYY
+                return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+            }
+        }
+    } else if (dob.includes('-')) {
+        const parts = dob.split('-');
+        if (parts.length === 3 && parts[0].length === 4) {
+            // yyyy-mm-dd → DD/MM/YYYY
+            const [y, m, d] = parts;
+            return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+        }
+    }
+    return dob;
+};
+
 const studentLoginSchema = z.object({
     usn: z.string().min(1, "USN is required"),
     dob: z.string().min(1, "DOB is required")
@@ -20,8 +44,11 @@ router.post("/student/login", async (req, res) => {
     try {
         const { usn, dob } = studentLoginSchema.parse(req.body);
 
+        // Normalize DOB before comparing so all formats match the stored hash
+        const normalizedDob = normalizeDob(dob);
+
         const student = await prisma.student.findUnique({
-            where: { usn },
+            where: { usn: usn.trim().toUpperCase() },
             include: {
                 class: true,
                 marks: {
@@ -34,7 +61,7 @@ router.post("/student/login", async (req, res) => {
             return res.status(401).json({ message: "Invalid USN or DOB" });
         }
 
-        const isMatch = await bcrypt.compare(dob, student.dob_hash);
+        const isMatch = await bcrypt.compare(normalizedDob, student.dob_hash);
         if (!isMatch) {
             return res.status(401).json({ message: "Invalid USN or DOB" });
         }
