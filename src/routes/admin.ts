@@ -218,16 +218,16 @@ router.post("/students/bulk", async (req, res) => {
 const markSchema = z.object({
     student_id: z.string().min(1),
     subject_id: z.string().min(1),
-    total: z.number().min(0).max(100),
+    total: z.number().min(0).max(50), // Changed from 100 to 50
     grade: z.string().optional()
 });
 
 const calculateGrade = (total: number) => {
-    if (total >= 90) return "A+";
-    if (total >= 80) return "A";
-    if (total >= 70) return "B";
-    if (total >= 60) return "C";
-    if (total >= 50) return "D";
+    if (total > 45) return "A+";
+    if (total > 40) return "A";
+    if (total > 35) return "B+";
+    if (total > 30) return "B";
+    if (total > 22) return "C+";
     return "F";
 };
 
@@ -272,7 +272,7 @@ router.post("/marks", async (req, res) => {
 const bulkMarkSchema = z.array(z.object({
     student_id: z.string().min(1),
     subject_id: z.string().min(1),
-    total: z.number().min(0).max(100)
+    total: z.number().min(0).max(50) // Changed from 100 to 50
 }));
 
 router.post("/marks/bulk", async (req, res) => {
