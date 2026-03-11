@@ -17,10 +17,12 @@ model Admin {
 
 model Class {
   id       String    @id @default(uuid())
-  name     String    @unique
+  name     String
   type     String    @default("Offline")
   students Student[]
   subjects Subject[]
+
+  @@unique([name, type])
 }
 
 model Student {

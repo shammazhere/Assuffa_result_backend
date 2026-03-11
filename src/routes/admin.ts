@@ -22,10 +22,23 @@ router.get("/classes", async (req, res) => {
 router.post("/classes", async (req, res) => {
     try {
         const { name, type } = classSchema.parse(req.body);
-        const newClass = await prisma.class.create({ data: { name, type } });
+        const upperName = name.trim().toUpperCase();
+
+        // Find if exists
+        const exists = await prisma.class.findUnique({
+            where: { name_type: { name: upperName, type } }
+        });
+
+        if (exists) {
+            return res.status(400).json({ error: "Class already exists in this mode." });
+        }
+
+        const newClass = await prisma.class.create({
+            data: { name: upperName, type }
+        });
         res.status(201).json(newClass);
     } catch (error) {
-        res.status(400).json({ error: "Invalid data or class already exists" });
+        res.status(400).json({ error: "Failed to create class" });
     }
 });
 
@@ -314,19 +327,20 @@ router.post("/bulk-complete", async (req, res) => {
         await prisma.$transaction(async (tx) => {
             for (const studentData of studentsToProcess) {
                 const { first_name, usn, dob_hash, class_name, marks } = studentData;
-                const class_type = studentData.class_type || studentData.type || studentData.mode || "Offline";
+                const class_type_raw = studentData.class_type || studentData.type || studentData.mode || "Offline";
+                const class_type = class_type_raw.charAt(0).toUpperCase() + class_type_raw.slice(1).toLowerCase();
 
-                // 1. Find or create class (Standardize Name to UpperCase)
+                // 1. Find or create class (Standardize both Name and Type)
                 const standardizedClassName = String(class_name).trim().toUpperCase();
-                let targetClass = await tx.class.findFirst({
-                    where: { name: standardizedClassName }
+                let targetClass = await tx.class.findUnique({
+                    where: { name_type: { name: standardizedClassName, type: class_type } }
                 });
 
                 if (!targetClass) {
                     targetClass = await tx.class.create({
                         data: {
                             name: standardizedClassName,
-                            type: class_type.charAt(0).toUpperCase() + class_type.slice(1).toLowerCase()
+                            type: class_type
                         }
                     });
                 }
