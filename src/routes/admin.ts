@@ -401,6 +401,9 @@ router.post("/bulk-complete", async (req, res) => {
                 }
                 successCount++;
             }
+        }, {
+            maxWait: 50000, // 50 seconds max wait to start
+            timeout: 300000 // 5 minutes timeout for the entire massive transaction
         });
 
         res.json({ success: true, count: studentsToProcess.length });
