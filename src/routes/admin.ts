@@ -315,33 +315,31 @@ router.post("/bulk-complete", async (req, res) => {
         // 1. Pre-process and Hash DOBs in parallel (Faster & prevents transaction timeout)
         const studentsToProcess = await Promise.all(payload.map(async (item: any) => {
             const { dob } = item;
-            let finalDob = String(dob).trim().replace(/\s/g, '');
-
-            // Normalize: handle slash-separated or dash-separated date formats
-            // Converts d/m/yyyy or dd/mm/yyyy into the canonical DD/MM/YYYY string for hashing
-            if (finalDob.includes('/')) {
-                const parts = finalDob.split('/');
-                if (parts.length === 3) {
-                    const [d, m, y] = parts;
-                    finalDob = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+            
+            // Mirror of auth.ts Beast-Mode normalization
+            const normalizeDateStr = (raw: any): string => {
+                let s = String(raw || '').trim().replace(/\s/g, '');
+                if (!s) return "";
+                if (/^\d{8}$/.test(s)) {
+                    return `${s.slice(0, 2)}/${s.slice(2, 4)}/${s.slice(4)}`;
                 }
-            } else if (finalDob.includes('-')) {
-                const parts = finalDob.split('-');
+                const parts = s.split(/[/\-.]/);
                 if (parts.length === 3) {
-                    const [p1, p2, p3] = parts;
-                    // YYYY-MM-DD
+                    let [p1, p2, p3] = parts;
                     if (p1.length === 4) {
-                        const [y, m, d] = parts;
-                        finalDob = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
-                    } 
-                    // DD-MM-YYYY
-                    else if (p3.length === 4) {
-                        const [d, m, y] = parts;
-                        finalDob = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+                        const [y, m, d] = [p1, p2, p3];
+                        return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
                     }
+                    let d = p1, m = p2, y = p3;
+                    if (y.length === 2) {
+                        y = (parseInt(y) < 50 ? "20" : "19") + y;
+                    }
+                    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
                 }
-            }
+                return s;
+            };
 
+            const finalDob = normalizeDateStr(dob);
             const dob_hash = await bcrypt.hash(finalDob, 10);
             return { ...item, dob_hash };
         }));

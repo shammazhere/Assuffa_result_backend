@@ -9,40 +9,57 @@ const router = express.Router();
 // Generates ALL possible DOB strings that may have been hashed across different upload code versions.
 // This is needed because past uploads stored dates in different formats due to code bugs.
 // Tries every possible format so login always works regardless of when the student was uploaded.
-const generateDobCandidates = (raw: string): string[] => {
-    const cleaned = raw.trim();
-    const candidates = new Set<string>();
-    candidates.add(cleaned); // always try as-is first
+// Extreme Robustness: Normalizes any date input into a canonical DD/MM/YYYY string.
+// Handles 2-digit years, different separators (./-), and varied layouts.
+const normalizeDateStr = (raw: string): string => {
+    let s = raw.trim().replace(/\s/g, '');
+    if (!s) return "";
 
-    if (cleaned.includes('/')) {
-        const parts = cleaned.split('/');
-        if (parts.length === 3) {
-            const [a, b, c] = parts;
-            // Case 1: Input is DD/MM/YYYY (user typed 01/01/2006)
-            // The year will be 4 digits and last
-            if (c.length === 4) {
-                const d = a, m = b, y = c;
-                candidates.add(`${d.padStart(2,'0')}/${m.padStart(2,'0')}/${y}`);  // current format: 01/01/2006
-                candidates.add(`${parseInt(d)}/${parseInt(m)}/${y}`);               // unpadded: 1/1/2006
-                candidates.add(`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`);  // YYYY-MM-DD padded
-                candidates.add(`${y}-${parseInt(m)}-${parseInt(d)}`);              // YYYY-M-D (v1 bug format)
-                candidates.add(`${y}-${m}-${d}`);                                  // YYYY-MM-DD raw parts
-            }
+    // 1. If 8 digits straight (DDMMYYYY)
+    if (/^\d{8}$/.test(s)) {
+        return `${s.slice(0, 2)}/${s.slice(2, 4)}/${s.slice(4)}`;
+    }
+
+    // 2. Split by any common separator
+    const parts = s.split(/[/\-.]/);
+    if (parts.length === 3) {
+        let [p1, p2, p3] = parts;
+        
+        // Handle YYYY-MM-DD
+        if (p1.length === 4) {
+            const [y, m, d] = [p1, p2, p3];
+            return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
         }
-    } else if (cleaned.includes('-')) {
-        const parts = cleaned.split('-');
-        if (parts.length === 3) {
-            const [a, b, c] = parts;
-            if (a.length === 4) {
-                // Input is YYYY-MM-DD or YYYY-M-D
-                const y = a, m = b, d = c;
-                candidates.add(`${d.padStart(2,'0')}/${m.padStart(2,'0')}/${y}`);  // DD/MM/YYYY
-                candidates.add(`${parseInt(d)}/${parseInt(m)}/${y}`);               // D/M/YYYY
-                candidates.add(`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`);  // YYYY-MM-DD padded
-                candidates.add(`${y}-${parseInt(m)}-${parseInt(d)}`);              // YYYY-M-D
-                candidates.add(`${y}-${m}-${d}`);                                  // as-is with dashes
-            }
+        
+        // Handle D/M/YY or DD/MM/YYYY
+        let d = p1, m = p2, y = p3;
+        if (y.length === 2) {
+            y = (parseInt(y) < 50 ? "20" : "19") + y;
         }
+        return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    }
+    return s;
+};
+
+// Generates ALL possible DOB strings that may have been hashed across every version of the app.
+const generateDobCandidates = (raw: string): string[] => {
+    const candidates = new Set<string>();
+    const input = raw.trim();
+    if (!input) return [];
+
+    const canonical = normalizeDateStr(input);
+    candidates.add(canonical); // 01/01/2006
+    
+    // Add raw input just in case
+    candidates.add(input);
+
+    if (canonical.includes('/')) {
+        const [d, m, y] = canonical.split('/');
+        // Historic formats we might have used in past bugs
+        candidates.add(`${y}-${m}-${d}`);           // 2006-01-01
+        candidates.add(`${y}-${parseInt(m)}-${parseInt(d)}`); // 2006-1-1 (v1 bug)
+        candidates.add(`${parseInt(d)}/${parseInt(m)}/${y}`); // 1/1/2006
+        candidates.add(`${d}${m}${y}`);             // 01012006
     }
 
     return Array.from(candidates);
