@@ -316,10 +316,26 @@ router.post("/bulk-complete", async (req, res) => {
         const studentsToProcess = await Promise.all(payload.map(async (item: any) => {
             const { dob } = item;
             let finalDob = String(dob).trim();
+
+            // Normalize: handle slash-separated date formats including Excel output
+            // Converts d/m/yyyy or dd/mm/yyyy into the canonical DD/MM/YYYY string for hashing
             if (finalDob.includes('/')) {
-                const [d, m, y] = finalDob.split('/');
-                finalDob = `${y}-${m}-${d}`;
+                const parts = finalDob.split('/');
+                if (parts.length === 3) {
+                    const [d, m, y] = parts;
+                    // Pad day and month to 2 digits (1/1/2000 → 01/01/2000)
+                    finalDob = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+                }
             }
+            // If date came as YYYY-MM-DD (e.g. from cellDates parsing), convert to DD/MM/YYYY
+            else if (finalDob.includes('-') && finalDob.length >= 8) {
+                const parts = finalDob.split('-');
+                if (parts.length === 3 && parts[0].length === 4) {
+                    const [y, m, d] = parts;
+                    finalDob = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+                }
+            }
+
             const dob_hash = await bcrypt.hash(finalDob, 10);
             return { ...item, dob_hash };
         }));
