@@ -81,10 +81,27 @@ router.post("/student/login", async (req, res) => {
 
         const student = await prisma.student.findUnique({
             where: { usn: usn.trim().toUpperCase() },
-            include: {
-                class: true,
+            select: {
+                id: true,
+                first_name: true,
+                usn: true,
+                dob_hash: true,
+                class: {
+                    select: {
+                        name: true,
+                        type: true
+                    }
+                },
                 marks: {
-                    include: { subject: true }
+                    select: {
+                        total: true,
+                        grade: true,
+                        subject: {
+                            select: {
+                                name: true
+                            }
+                        }
+                    }
                 }
             }
         });

@@ -2,6 +2,7 @@ import express from "express";
 import helmet from "helmet";
 import compression from "compression";
 import rateLimit from "express-rate-limit";
+import responseTime from "response-time";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -14,6 +15,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+app.use(responseTime());
 app.use(compression());
 app.use(helmet({
     crossOriginResourcePolicy: false,
@@ -22,7 +24,6 @@ app.use(helmet({
 
 app.use(cors({
     origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl)
         if (!origin) return callback(null, true);
 
         const allowedOrigins = [
@@ -42,21 +43,28 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
-// Trust Vercel's proxy so rate limiting works per user IP, not Vercel's IP
 app.set("trust proxy", 1);
 
-const limiter = rateLimit({
+// Standard Global Limiter
+const globalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 500, // Increased to 500 for high burst traffic during results day
-    message: { message: "Too many requests from this IP, please try again later." }
+    max: 1000, 
+    message: { message: "Too many requests, please try again later." }
 });
-app.use(limiter);
+app.use(globalLimiter);
 
-// Mount routes
-app.use(["/api/auth", "/auth"], authRoutes);
+// Strict Auth Limiter (Brute force protection)
+const loginLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 15, // 15 attempts per minute
+    message: { message: "Too many login attempts. Please wait 1 minute." }
+});
+
+// Mount routes with specific limiters
+app.use(["/api/auth", "/auth"], loginLimiter, authRoutes);
 app.use(["/api/admin", "/admin"], adminRoutes);
 
 app.get(["/", "/api", "/health"], (_req, res) => {
