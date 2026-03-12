@@ -15,7 +15,9 @@ const classSchema = z.object({
 });
 
 router.get("/classes", async (req, res) => {
-    const classes = await prisma.class.findMany();
+    const classes = await prisma.class.findMany({
+        orderBy: { name: 'asc' }
+    });
     res.json(classes);
 });
 
@@ -60,17 +62,31 @@ const subjectSchema = z.object({
 router.get("/subjects", async (req, res) => {
     const { class_id } = req.query;
     const where = class_id ? { class_id: String(class_id) } : {};
-    const subjects = await prisma.subject.findMany({ where, include: { class: true } });
+    const subjects = await prisma.subject.findMany({ 
+        where, 
+        include: { class: true },
+        orderBy: { name: 'asc' }
+    });
     res.json(subjects);
 });
 
 router.post("/subjects", async (req, res) => {
     try {
         const { name, class_id } = subjectSchema.parse(req.body);
-        const newSubject = await prisma.subject.create({ data: { name, class_id } });
+        const upperName = name.trim().toUpperCase();
+
+        const exists = await prisma.subject.findFirst({
+            where: { name: upperName, class_id }
+        });
+
+        if (exists) {
+            return res.status(400).json({ error: "Subject already exists in this class." });
+        }
+
+        const newSubject = await prisma.subject.create({ data: { name: upperName, class_id } });
         res.status(201).json(newSubject);
     } catch (error) {
-        res.status(400).json({ error: "Invalid data" });
+        res.status(400).json({ error: "Invalid data or subject already exists" });
     }
 });
 
@@ -112,7 +128,10 @@ router.get("/students", async (req, res) => {
                 }
             }
         },
-        orderBy: { usn: 'asc' }
+        orderBy: [
+            { class: { name: 'asc' } },
+            { first_name: 'asc' }
+        ]
     });
     res.json(students);
 });
@@ -236,7 +255,11 @@ router.get("/marks", async (req, res) => {
     const where = class_id ? { student: { class_id: String(class_id) } } : {};
     const marks = await prisma.mark.findMany({
         where,
-        include: { student: true, subject: true }
+        include: { student: true, subject: true },
+        orderBy: [
+            { student: { usn: 'asc' } },
+            { subject: { name: 'asc' } }
+        ]
     });
 
     const sanitizedMarks = marks.map((m: any) => {
@@ -326,10 +349,12 @@ router.post("/bulk-complete", async (req, res) => {
                 const parts = s.split(/[/\-.]/);
                 if (parts.length === 3) {
                     let [p1, p2, p3] = parts;
+                    // Handle YYYY-MM-DD
                     if (p1.length === 4) {
                         const [y, m, d] = [p1, p2, p3];
                         return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
                     }
+                    // Handle D/M/Y or DD/MM/YYYY
                     let d = p1, m = p2, y = p3;
                     if (y.length === 2) {
                         y = (parseInt(y) < 50 ? "20" : "19") + y;
