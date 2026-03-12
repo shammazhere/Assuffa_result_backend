@@ -65,7 +65,10 @@ router.get("/subjects", async (req, res) => {
     const subjects = await prisma.subject.findMany({ 
         where, 
         include: { class: true },
-        orderBy: { name: 'asc' }
+        orderBy: [
+            { class: { name: 'asc' } },
+            { name: 'asc' }
+        ]
     });
     res.json(subjects);
 });
